@@ -757,7 +757,7 @@ impl<'s> Lexer<'s> {
     pub fn new(source: &'s str) -> Self {
         let mut token_stream = Token::lexer_with_extras(source, LexerState::default()).spanned();
         let next_token =
-            token_stream.find(|(tok, _)| !matches!(tok, Ok(token) if token.is_trivia()));
+            token_stream.find(|(tok, _)| !tok.as_ref().is_ok_and(|tok| tok.is_trivia()));
 
         Self {
             source,
@@ -780,7 +780,7 @@ impl<'s> Lexer<'s> {
             }
             None => self
                 .token_stream
-                .find(|(tok, _)| !matches!(tok, Ok(token) if token.is_trivia())),
+                .find(|(tok, _)| !tok.as_ref().is_ok_and(|tok| tok.is_trivia())),
         };
 
         (tok1, tok2)
@@ -881,45 +881,30 @@ impl Iterator for Lexer<'_> {
 impl TokenIterator for Lexer<'_> {}
 
 #[test]
-fn invalid_characters_are_rejected() {
-    assert!(matches!(
-        crate::parse_str("💥"),
-        Err(crate::Error {
-            error: crate::error::ErrorKind::InvalidToken,
-            ..
-        })
-    ));
-    assert!(matches!(
-        crate::parse_str("fn main() { let value = 1 $ + 2; }"),
-        Err(crate::Error {
-            error: crate::error::ErrorKind::InvalidToken,
-            ..
-        })
-    ));
+fn test_invalid_characters() {
+    for (source, span) in [
+        ("💥", 0..4),
+        ("$ fn main() {}", 0..1),
+        ("fn main() { let value = 1 $ + 2; }", 26..27),
+        ("fn main() {} $", 13..14),
+    ] {
+        let error = crate::parse_str(source).unwrap_err();
+        assert_eq!(error.error, crate::error::ErrorKind::InvalidToken);
+        assert_eq!(error.span.range(), span);
+    }
 }
 
 #[test]
-fn unterminated_block_comments_are_rejected() {
-    assert!(matches!(
-        crate::parse_str("/*"),
-        Err(crate::Error {
-            error: crate::error::ErrorKind::InvalidToken,
-            ..
-        })
-    ));
-    assert!(matches!(
-        crate::parse_str("fn main() {} /* unterminated"),
-        Err(crate::Error {
-            error: crate::error::ErrorKind::InvalidToken,
-            ..
-        })
-    ));
-    assert!(matches!(
-        crate::parse_str("fn main() {} /* outer /* inner */"),
-        Err(crate::Error {
-            error: crate::error::ErrorKind::InvalidToken,
-            ..
-        })
-    ));
+fn test_unterminated_block_comments() {
+    for (source, span) in [
+        ("/*", 0..2),
+        ("fn main() {} /* unfinished", 13..26),
+        ("fn main() {} /* outer /* inner */", 13..33),
+        ("fn main() {} /* 💥", 13..20),
+    ] {
+        let error = crate::parse_str(source).unwrap_err();
+        assert_eq!(error.error, crate::error::ErrorKind::InvalidToken);
+        assert_eq!(error.span.range(), span);
+    }
     assert!(crate::parse_str("fn main() {} /* outer /* inner */ */").is_ok());
 }
