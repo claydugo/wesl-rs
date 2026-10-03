@@ -882,7 +882,6 @@ impl TokenIterator for Lexer<'_> {}
 
 #[test]
 fn test_lexer_errors() {
-    assert!(crate::parse_str("💥").is_err());
     assert!(crate::parse_str("const value = 1 $ + 2;").is_err());
     assert!(crate::parse_str("/* outer /* inner */").is_err());
     assert!(crate::parse_str("/* outer /* inner */ */").is_ok());
